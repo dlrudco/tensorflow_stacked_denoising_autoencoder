@@ -3,20 +3,26 @@ import tensorflow as tf
 
 class Autoencoder(object):
 
-    def __init__(self, n_layers, transfer_function=tf.nn.softplus, optimizer=tf.train.AdamOptimizer(), ae_para=[0, 0]):
+    def __init__(self, n_layers, transfer_function=tf.nn.sigmoid, optimizer=tf.train.AdamOptimizer(), ae_para=[0, 0], reference = False):
         self.n_layers = n_layers
         self.transfer = transfer_function
         self.in_keep_prob = 1 - ae_para[0]
+        self.reference = reference
 
         network_weights = self._initialize_weights()
         self.weights = network_weights
         self.sparsity_level = 0.1  # np.repeat([0.05], self.n_hidden).astype(np.float32)
         self.sparse_reg = ae_para[1]
-        self.epsilon = 1e-06
+        self.epsilon = 1e-8
 
         # model
 
         self.x = tf.placeholder(tf.float32, [None, self.n_layers[0]])
+        self.orig = tf.placeholder(tf.float32, [None, self.n_layers[0]])
+        self.enc_input = tf.placeholder(tf.float32, [None, self.n_layers[1]])
+
+
+
         self.keep_prob = tf.placeholder(tf.float32)
 
         self.hidden_encode = []
@@ -37,9 +43,16 @@ class Autoencoder(object):
 
         # cost
         if self.sparse_reg == 0:
-            self.cost = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(self.reconstruction, self.x), 2.0))
+            if self.reference == True:
+                self.cost = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(self.reconstruction, self.orig), 2.0))
+            else:
+                self.cost = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(self.reconstruction, self.x), 2.0))
         else:
-            self.cost = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(self.reconstruction, self.x), 2.0))+\
+            if self.reference == True:
+                self.cost = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(self.reconstruction, self.orig), 2.0))+\
+                        self.sparse_reg * self.kl_divergence(self.sparsity_level, self.hidden_encode[-1])
+            else:
+                self.cost = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(self.reconstruction, self.x), 2.0))+\
                         self.sparse_reg * self.kl_divergence(self.sparsity_level, self.hidden_encode[-1])
 
         self.optimizer = optimizer.minimize(self.cost)
@@ -84,6 +97,9 @@ class Autoencoder(object):
 
     def transform(self):
         return self.hidden_encode[-1]
+
+    def decode(self):
+        return self.dec_output
 
     def reconstruct(self):
         return self.reconstruction
